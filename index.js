@@ -2,21 +2,26 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import Groq from "groq-sdk";
-import { tavily } from "@tavily/core"; // web search api key provider
-import readline from "readline"; // to read the terminle input 
+import { tavily } from "@tavily/core";
+import readline from "readline";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const tvly = tavily({ apiKey: process.env.TAVILY_API_KEY });
 
-// 🧠 MEMORY (conversation history)
+
 let messages = [
   {
     role: "system",
-    content: "You are a smart assistant. Use webSearch for real-time data.",
+    content: `You are a helpful assistant with access to a web search tool. 
+    If you need current information, call the webSearch function. `,
+    // Respond in JSON format when calling tools. 
+    // Only call the webserach tool if needed otherwise answer by your won.
+    // Read the user's input very carefully and analyze the input and then only answer to the question of the user.
+    // `,
   },
 ];
 
-// 🎤 CLI input (so you can chat continuously)
+
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
@@ -24,13 +29,12 @@ const rl = readline.createInterface({
 
 async function chat() {
   rl.question("You: ", async (query) => {
-    // 1️⃣ Add user message to memory
     messages.push({
       role: "user",
       content: query,
     });
 
-    // 2️⃣ Call LLM with FULL history
+  
     const response = await groq.chat.completions.create({
       messages: messages,
       model: "llama-3.3-70b-versatile",
@@ -50,30 +54,27 @@ async function chat() {
           },
         },
       ],
-      tool_choice: "auto",
+      // tool_choice: "auto",
+      tool_choice :  {"type": "function", "function": { "name": "webSearch" }}
     });
 
     const message = response.choices[0].message;
 
-    // 3️⃣ If tool is called
     if (message.tool_calls) {
       const toolCall = message.tool_calls[0];
       const args = JSON.parse(toolCall.function.arguments);
 
-      // Execute tool
       const toolResult = await webSearch(args);
 
-      // Add assistant tool call
       messages.push(message);
 
-      // Add tool result
       messages.push({
         role: "tool",
         tool_call_id: toolCall.id,
         content: toolResult,
       });
 
-      // 4️⃣ Final LLM call with updated memory
+      
       const finalResponse = await groq.chat.completions.create({
         messages: messages,
         model: "llama-3.3-70b-versatile",
@@ -81,29 +82,26 @@ async function chat() {
 
       const finalMessage = finalResponse.choices[0].message;
 
-      // Add assistant response to memory
+    
       messages.push(finalMessage);
 
-      console.log("Jarvis:", finalMessage.content);
+      console.log("Smart-AI-Assistant :", finalMessage.content);
     } else {
-      // No tool used
       messages.push(message);
-      console.log("Jarvis:", message.content);
+      console.log("Smart-AI-Assistant :", message.content);
     }
 
-    // 🔁 Continue chat
+
     chat();
   });
 }
 
-// 🔍 Tavily Search
+
 async function webSearch({ query }) {
-  console.log("🔍 Searching:", query);
+  console.log("=> Searching :", query);
 
   const res = await tvly.search(query);
   return res.results.map((r) => r.content).join("\n");
 }
 
-// Start chat
 chat();
-
